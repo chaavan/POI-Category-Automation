@@ -2,9 +2,6 @@ streamlit
 overturemaps
 pandas
 numpy
-json
 requests
 bs4
-concurrent.futures
 google.generativeai
-threading
