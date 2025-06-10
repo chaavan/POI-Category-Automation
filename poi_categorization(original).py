@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
-import overturemaps as om
 from overturemaps import core
-import pandas as pd
-import geopandas as gpd
-from shapely import wkb
+import pandas
 import numpy as np
 import json
 import requests
