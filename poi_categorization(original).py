@@ -2,7 +2,7 @@
 import streamlit as st
 import overturemaps as om
 from overturemaps import core
-import pandas
+import pandas as pd
 import geopandas as gpd
 from shapely import wkb
 import numpy as np
