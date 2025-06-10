@@ -459,178 +459,120 @@ def main():
     st.set_page_config(page_title="POI Categorization", layout="wide")
     st.title("POI Categorization Engine")
 
+    # Sidebar inputs
     st.sidebar.header("Inputs")
-    api_key_input = st.sidebar.text_input(
-        "Google Generative AI API Key:", type="password",
-        help="Your API key for Google's Gemini models."
-    )
+    api_key = st.sidebar.text_input("Google GenAI API Key:", type="password")
+    st.sidebar.subheader("Bounding Box")
+    min_lon = st.sidebar.number_input("Min Lon", value=9.0894, format="%.4f")
+    min_lat = st.sidebar.number_input("Min Lat", value=45.5042, format="%.4f")
+    max_lon = st.sidebar.number_input("Max Lon", value=9.0904, format="%.4f")
+    max_lat = st.sidebar.number_input("Max Lat", value=45.5102, format="%.4f")
+    bbox = (min_lon, min_lat, max_lon, max_lat)
 
-    st.sidebar.subheader("Bounding Box (BBOX)")
-    min_lon = st.sidebar.number_input("Min Longitude", format="%.4f", value=9.0894)
-    min_lat = st.sidebar.number_input("Min Latitude", format="%.4f", value=45.5042)
-    max_lon = st.sidebar.number_input("Max Longitude", format="%.4f", value=9.0904)
-    max_lat = st.sidebar.number_input("Max Latitude", format="%.4f", value=45.5102)
-    bbox_input = (min_lon, min_lat, max_lon, max_lat)
-
-    if not st.sidebar.button("🚀 Process POIs", use_container_width=True):
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("Built with [Streamlit](https://streamlit.io) and [Overture Maps](https://overturemaps.org).")
-        st.info("Enter BBOX coordinates and your API key, then click 'Process POIs'.")
+    if not st.sidebar.button("🚀 Process POIs"):
+        st.sidebar.markdown("---\nBuilt with Streamlit & Overture Maps.")
+        st.info("Enter your API key and BBOX, then click Process.")
         return
 
-    if not api_key_input:
-        st.error("🚨 Please enter your Google Generative AI API Key.")
-        return
-    if any(not isinstance(c, float) for c in bbox_input): # Ensure all BBOX coords are floats
-        st.error("🚨 Please enter valid BBOX coordinates.")
+    if not api_key:
+        st.error("Please enter your Google GenAI API key.")
         return
 
-    st.info(f"Processing POIs for BBOX: {bbox_input}...")
-
-    st.write("Fetching POI data from Overture Maps...")
+    st.info(f"Fetching POIs for BBOX: {bbox}")
     try:
-        place_dataset = core.geodataframe("place", bbox=bbox_input)
+        pois = core.geodataframe("place", bbox=bbox)
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
+        st.error(f"Overture Maps error: {e}")
         return
-    if place_dataset.empty:
-        st.warning("No POIs found for the given BBOX.")
-        return
-    st.write(f"Found {len(place_dataset)} POIs.")
 
-    # Website scraping
-    websites_map = {} # Renamed to avoid conflict with 'websites' variable name if used elsewhere
-    for idx, row in place_dataset.iterrows():
-        # Safely get primary name, providing a default if keys are missing
-        primary_name = row.get("names", {}).get("primary", f"Unnamed POI {idx}")
-        # Overture 'websites' is an array of strings, 'or []' handles None
-        websites_map[primary_name] = row.get("websites") or [] 
-    
-    total_sites = len(websites_map)
-    st.subheader("📊 Website Scraping")
-    site_bar  = st.progress(0.0) # Initialize with float for consistency
+    if pois.empty:
+        st.warning("No POIs found.")
+        return
+
+    st.success(f"Loaded {len(pois)} POIs")
+
+    # --- Website scraping ---
+    st.subheader("Website Scraping")
+    site_bar = st.progress(0.0)
     site_text = st.empty()
-    site_text.caption(f"Preparing to scrape {total_sites} websites...")
 
-    scraped_websites = {}
-    if total_sites > 0:
-        with ThreadPoolExecutor(max_workers=20) as executor:
-            # Use get_first_website helper, which handles empty lists
-            futures = {
-                executor.submit(scrape_website, get_first_website(urls)): name
-                for name, urls in websites_map.items()
-            }
-            done = 0
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    content = future.result()
-                    scraped_websites[name] = content
-                except Exception as e:
-                    st.warning(f"Error scraping website for {name}: {e}")
-                    scraped_websites[name] = "Scraping Failed (Executor Error)"
-                done += 1
-                pct = done / total_sites
-                site_bar.progress(pct)
-                site_text.caption(f"Websites: {done}/{total_sites} ({pct*100:.1f}%)")
-    else:
-        site_text.caption("No websites found to scrape for the given POIs.")
-        # site_bar.progress(1.0) # Optionally mark as complete
+    websites = {
+        row["names"]["primary"]: row.get("websites") or []
+        for _, row in pois.iterrows()
+    }
+    scraped_web = {}
+    total = len(websites)
+    done = 0
 
-    st.write("Website scraping complete.")
+    with ThreadPoolExecutor(max_workers=20) as exe:
+        futures = {
+            exe.submit(scrape_website, get_first_website(urls)): name
+            for name, urls in websites.items()
+        }
+        for fut in as_completed(futures):
+            name = futures[fut]
+            try:
+                scraped_web[name] = fut.result()
+            except:
+                scraped_web[name] = ""
+            done += 1
+            pct = done / total
+            site_bar.progress(pct)
+            site_text.caption(f"Sites: {done}/{total} ({pct*100:.1f}%)")
 
-    # Social media scraping
-    socials_data_map = {}
-    for idx, row in place_dataset.iterrows():
-        primary_name = row.get("names", {}).get("primary", f"Unnamed POI {idx}")
-        socials_data_map[primary_name] = row.get("socials") # row.get("socials") can be None, str, or list
+    st.write("Website scraping done.")
 
-    tasks = []
-    for name, urls_data in socials_data_map.items():
-        if isinstance(urls_data, list):
-            for url in urls_data:
-                if isinstance(url, str) and url.startswith(("http://", "https://")):
-                    tasks.append((name, url))
-        elif isinstance(urls_data, str) and urls_data.startswith(("http://", "https://")): # Handles if 'socials' was a single string URL
-            tasks.append((name, urls_data))
-
-    total_social = len(tasks)
-    st.subheader("📊 Social Media Scraping")
-    social_bar  = st.progress(0.0) # Initialize with float
+    # --- Social scraping ---
+    st.subheader("Social Media Scraping")
+    social_bar = st.progress(0.0)
     social_text = st.empty()
 
-    if total_social == 0:
-        social_text.caption("No social media URLs found to scrape for the given POIs.")
-        # social_bar.progress(1.0) # Optionally mark as complete if no tasks
-    else:
-        social_text.caption(f"Scraping {total_social} social media URLs...")
-        scraped_socials = {} # {poi_name: [content1, content2]}
-        with ThreadPoolExecutor(max_workers=20) as executor:
-            # Future maps to (name, url) for error reporting if needed
-            futures = {
-                executor.submit(scrape_website, url_to_scrape): (name_origin, url_to_scrape)
-                for name_origin, url_to_scrape in tasks
-            }
-            done = 0
-            for future in as_completed(futures):
-                name, url = futures[future] # Get original name and URL for context
-                try:
-                    content = future.result()
-                    scraped_socials.setdefault(name, []).append(content)
-                except Exception as e:
-                    # scrape_website already catches its exceptions and returns "",
-                    # so this would be for more general errors with the future.
-                    st.warning(f"Error processing social URL {url} for {name}: {e}")
-                    scraped_socials.setdefault(name, []).append("Scraping Failed (Executor Error)")
-                
-                done += 1
-                pct = done / total_social # total_social is > 0 here
-                social_bar.progress(pct)
-                social_text.caption(f"Socials: {done}/{total_social} ({pct*100:.1f}%)")
-    st.write("Social media scraping complete.")
+    socials = {
+        row["names"]["primary"]: row.get("socials") or []
+        for _, row in pois.iterrows()
+    }
+    tasks = []
+    for name, slinks in socials.items():
+        if isinstance(slinks, list):
+            tasks += [(name, u) for u in slinks if isinstance(u, str) and u.startswith(("http",))]
+        elif isinstance(slinks, str) and slinks.startswith(("http",)):
+            tasks.append((name, slinks))
 
-    # Rule-based categorization
-    st.subheader("🛠️ Rule-Based Categorization")
-    rule_categories = []
-    # Ensure scraped_websites keys are used as the primary source of POI names for consistency
-    for name in scraped_websites.keys(): 
-        web_txt = scraped_websites.get(name, "")
-        # Aggregate all social texts for a given POI name
-        soc_list = scraped_socials.get(name, []) 
-        soc_txt = " ".join(filter(None, soc_list)) # Filter out None or empty strings before joining
-        cat = rule_based_category(name, web_txt, soc_txt) or "other"
-        rule_categories.append({"poi_name": name, "rule_category": cat})
-    
-    if rule_categories:
-        df_rules = pandas.DataFrame(rule_categories)
-        st.dataframe(df_rules, use_container_width=True)
-    else:
-        st.write("No data for rule-based categorization.")
+    scraped_soc = {}
+    total = len(tasks)
+    done = 0
 
+    with ThreadPoolExecutor(max_workers=20) as exe:
+        futures = {
+            exe.submit(scrape_website, url): (name, url)
+            for name, url in tasks
+        }
+        for fut in as_completed(futures):
+            name, _ = futures[fut]
+            try:
+                txt = fut.result()
+            except:
+                txt = ""
+            scraped_soc.setdefault(name, []).append(txt)
+            done += 1
+            pct = done / total if total else 1.0
+            social_bar.progress(pct)
+            social_text.caption(f"Socials: {done}/{total} ({pct*100:.1f}%)")
 
-    # LLM categorization & accuracy (insert your genai calls here)...
-    # This part would typically call process_poi_data or a similar function.
-    # For now, it's a placeholder as per the original structure.
-    # If you intend to use process_poi_data, you would call it here,
-    # passing api_key_input, bbox_input, and the Streamlit elements for progress.
-    # Example:
-    # streamlit_progress_elements = {
-    #     "websites": (site_text, site_bar), # Or new elements if you want separate ones
-    #     "socials": (social_text, social_bar)
-    # }
-    # predictions, accuracy, llm_raw_output = process_poi_data(
-    #     bbox_input, api_key_input, streamlit_progress_elements
-    # )
-    # if predictions is not None:
-    #     st.subheader("🤖 LLM Predicted Categories")
-    #     st.json(predictions) # Or display as a DataFrame
-    #     st.subheader(f"🎯 LLM Prediction Accuracy: {accuracy:.2f}%")
-    #     with st.expander("Raw LLM Output (Category Prediction)"):
-    #         st.text(llm_raw_output)
+    st.write("Social scraping done.")
 
+    # --- Rule-based categorization ---
+    st.subheader("Rule-Based Categories")
+    results = []
+    for name, wtxt in scraped_web.items():
+        stxt = " ".join(scraped_soc.get(name, []))
+        cat = rule_based_category(name, wtxt, stxt) or "other"
+        results.append({"POI": name, "Category": cat})
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("Built with [Streamlit](https://streamlit.io) and [Overture Maps](https://overturemaps.org).")
+    df = pd.DataFrame(results)
+    st.dataframe(df, use_container_width=True)
+
+    st.sidebar.markdown("---\nBuilt with Streamlit & Overture Maps.")
 
 if __name__ == "__main__":
     main()
