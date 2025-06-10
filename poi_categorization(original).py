@@ -478,7 +478,6 @@ def main():
         st.info("Enter BBOX coordinates and your API key, then click 'Process POIs'.")
         return
 
-    # Validate inputs
     if not api_key_input:
         st.error("🚨 Please enter your Google Generative AI API Key.")
         return
@@ -488,21 +487,18 @@ def main():
 
     st.info(f"Processing POIs for BBOX: {bbox_input}...")
 
-    # Fetch POIs
     st.write("Fetching POI data from Overture Maps...")
     try:
         place_dataset = core.geodataframe("place", bbox=bbox_input)
     except Exception as e:
         st.error(f"Error fetching data: {e}")
         return
-
     if place_dataset.empty:
         st.warning("No POIs found for the given BBOX.")
         return
-
     st.write(f"Found {len(place_dataset)} POIs.")
 
-    # Prepare website scraping
+    # Website scraping
     websites = {
         row["names"]["primary"]: row["websites"] or []
         for _, row in place_dataset.iterrows()
@@ -515,8 +511,7 @@ def main():
     scraped_websites = {}
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = {
-            executor.submit(lambda name, urls: (name, scrape_website(urls[0] if urls else "")),
-                            name, urls): name
+            executor.submit(lambda name, urls: (name, scrape_website(urls[0] if urls else "")), name, urls): name
             for name, urls in websites.items()
         }
         done = 0
@@ -528,10 +523,9 @@ def main():
             pct = done / total_sites
             site_bar.progress(pct)
             site_text.caption(f"Websites: {done}/{total_sites} ({pct*100:.1f}%)")
-
     st.write("Website scraping complete.")
 
-    # Prepare social scraping
+    # Social media scraping
     socials = {
         row["names"]["primary"]: row["socials"] or []
         for _, row in place_dataset.iterrows()
@@ -542,7 +536,7 @@ def main():
             for url in urls:
                 if isinstance(url, str) and url.startswith(("http://", "https://")):
                     tasks.append((name, url))
-        elif isinstance(urls, str) and urls.startswith(("http://", "https://")):
+        elif isinstance(urls, str) and urls.startswith(("http://", "https://"))):
             tasks.append((name, urls))
 
     total_social = len(tasks)
@@ -553,18 +547,17 @@ def main():
     scraped_socials = {}
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = {
-            executor.submit(lambda nm, u: (nm, scrape_website(u)), nm, u): (nm, u)
-            for nm, u in tasks
+            executor.submit(lambda n, u: (n, scrape_website(u)), n, u): (n, u)
+            for n, u in tasks
         }
         done = 0
         for future in as_completed(futures):
             name, content = future.result()
             scraped_socials.setdefault(name, []).append(content)
             done += 1
-            pct = done / total_social
+            pct = done / total_social if total_social else 1.0
             social_bar.progress(pct)
             social_text.caption(f"Socials: {done}/{total_social} ({pct*100:.1f}%)")
-
     st.write("Social media scraping complete.")
 
     # Rule-based categorization
@@ -575,15 +568,13 @@ def main():
         soc_txt = " ".join(scraped_socials.get(name, []))
         cat = rule_based_category(name, web_txt, soc_txt) or "other"
         rule_categories.append({"poi_name": name, "rule_category": cat})
-    df_rules = pd.DataFrame(rule_categories)
+    df_rules = pandas.DataFrame(rule_categories)
     st.dataframe(df_rules, use_container_width=True)
 
-    # LLM categorization & accuracy...
-    # (Insert your genai.configure / genai.get_model / generate_text calls here,
-    #  using scraped_websites, rule_categories, scraped_socials as context)
+    # LLM categorization & accuracy (insert your genai calls here)...
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("Built with [Streamlit](https://streamlit.io) and [Overture Maps](https://overturemaps.org).")
-    
+
 if __name__ == "__main__":
     main()
