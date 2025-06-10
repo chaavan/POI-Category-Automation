@@ -1,0 +1,12 @@
+streamlit
+overturemaps
+pandas
+geopandas
+shapely
+numpy
+json
+requests
+bs4
+concurrent.futures
+google.generativeai
+threading
