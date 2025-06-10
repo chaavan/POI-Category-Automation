@@ -2,6 +2,7 @@
 import streamlit as st
 from overturemaps import core
 import pandas
+import geopandas
 import numpy as np
 import json
 import requests
@@ -465,8 +466,8 @@ def main():
     # Default values from the original script
     min_lon = st.sidebar.number_input("Min Longitude", format="%.4f", value=9.0894)
     min_lat = st.sidebar.number_input("Min Latitude", format="%.4f", value=45.5042)
-    max_lon = st.sidebar.number_input("Max Longitude", format="%.4f", value=9.1094)
-    max_lat = st.sidebar.number_input("Max Latitude", format="%.4f", value=45.5172)
+    max_lon = st.sidebar.number_input("Max Longitude", format="%.4f", value=9.0904)
+    max_lat = st.sidebar.number_input("Max Latitude", format="%.4f", value=45.5102)
 
     bbox_input = (min_lon, min_lat, max_lon, max_lat)
 

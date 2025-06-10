@@ -1,6 +1,7 @@
 streamlit
 overturemaps
 pandas
+geopandas
 numpy
 requests
 bs4
