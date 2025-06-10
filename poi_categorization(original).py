@@ -289,7 +289,7 @@ def process_poi_data(bbox_tuple, api_key, streamlit_progress_elements):
     # Prepare items for ThreadPoolExecutor: (poi_name, list_of_website_urls)
     website_items_for_executor = list(websites_to_scrape.items())
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor: # Reduced max_workers
+    with ThreadPoolExecutor(max_workers=20) as executor: # Reduced max_workers
         results = list(executor.map(scrape_site_wrapper_st, website_items_for_executor))
     scraped_websites_data = dict(results)
     if g_site_progress_text: g_site_progress_text.caption(f"Website scraping complete: {g_scraped_sites_count}/{g_total_sites}")
@@ -320,7 +320,7 @@ def process_poi_data(bbox_tuple, api_key, streamlit_progress_elements):
 
     scraped_socials_content = {} # {poi_name: [{url: content}, ...]}
     if g_total_social_urls > 0:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor: # Reduced max_workers
+        with ThreadPoolExecutor(max_workers=20) as executor: # Reduced max_workers
             social_results = list(executor.map(scrape_social_url_wrapper_st, tasks_for_social_scraping))
         for place_name, url, content in social_results:
             if place_name not in scraped_socials_content:
