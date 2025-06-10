@@ -536,7 +536,7 @@ def main():
             for url in urls:
                 if isinstance(url, str) and url.startswith(("http://", "https://")):
                     tasks.append((name, url))
-        elif isinstance(urls, str) and urls.startswith(("http://", "https://"))):
+        elif isinstance(urls, str) and urls.startswith(("http://", "https://")):
             tasks.append((name, urls))
 
     total_social = len(tasks)
